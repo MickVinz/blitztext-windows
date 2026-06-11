@@ -26,6 +26,8 @@ class BlitztextApp:
         self._improve_mode = False
         self._lock = threading.Lock()
         self._settings_open = False
+        self._overlay_proc: subprocess.Popen | None = None
+        self._overlay_lock = threading.Lock()
 
     def _load_model(self) -> None:
         self._tray.set_state("processing", "Modell wird geladen...")
@@ -37,6 +39,33 @@ class BlitztextApp:
             self._tray.set_state("ready", "Bereit")
         except Exception as e:
             self._tray.set_state("error", f"Fehler: {str(e)[:40]}")
+
+    def _show_overlay(self, mode: str) -> None:
+        # Startet das Aufnahme-/Verarbeitungs-Banner als eigenen Prozess
+        # (tkinter braucht eigenen Hauptthread). Ein bereits laufendes
+        # Overlay wird zuvor beendet.
+        with self._overlay_lock:
+            self._hide_overlay_locked()
+            try:
+                self._overlay_proc = subprocess.Popen(
+                    [sys.executable, "-m", "ui.overlay", mode],
+                    cwd=self._root_dir,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                )
+            except Exception:
+                self._overlay_proc = None
+
+    def _hide_overlay(self) -> None:
+        with self._overlay_lock:
+            self._hide_overlay_locked()
+
+    def _hide_overlay_locked(self) -> None:
+        if self._overlay_proc and self._overlay_proc.poll() is None:
+            try:
+                self._overlay_proc.terminate()
+            except Exception:
+                pass
+        self._overlay_proc = None
 
     def _setup_hotkeys(self) -> None:
         self._hotkey.unregister_all()
@@ -64,6 +93,7 @@ class BlitztextApp:
             self._improve_mode = improve
         self._audio.start_recording()
         self._tray.set_state("recording", "Aufnahme läuft...")
+        self._show_overlay("recording")
 
     def _stop(self) -> None:
         with self._lock:
@@ -82,8 +112,10 @@ class BlitztextApp:
     def _process(self) -> None:
         wav_path = self._audio.stop_recording()
         if not wav_path:
+            self._hide_overlay()
             self._tray.set_state("ready", "Bereit")
             return
+        self._show_overlay("processing")
         try:
             text = self._transcription.transcribe(wav_path, self._config["language"])
             if text:
@@ -94,6 +126,7 @@ class BlitztextApp:
         except Exception as e:
             self._tray.set_state("error", str(e)[:40])
         finally:
+            self._hide_overlay()
             try:
                 os.unlink(wav_path)
             except OSError:
@@ -125,6 +158,7 @@ class BlitztextApp:
 
     def _quit(self) -> None:
         self._hotkey.unregister_all()
+        self._hide_overlay()
 
     def run(self) -> None:
         threading.Thread(target=self._load_model, daemon=True).start()
