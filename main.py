@@ -23,6 +23,8 @@ class BlitztextApp:
         self._tray = TrayApp(on_settings=self._open_settings, on_quit=self._quit)
         self._recording = False
         self._improve_mode = False
+        self._lock = threading.Lock()
+        self._settings_open = False
 
     def _load_model(self) -> None:
         self._tray.set_state("processing", "Modell wird geladen...")
@@ -54,17 +56,19 @@ class BlitztextApp:
                 lambda: self._toggle(improve=True))
 
     def _start(self, improve: bool) -> None:
-        if self._recording or self._transcription is None:
-            return
-        self._recording = True
-        self._improve_mode = improve
+        with self._lock:
+            if self._recording or self._transcription is None:
+                return
+            self._recording = True
+            self._improve_mode = improve
         self._audio.start_recording()
         self._tray.set_state("recording", "Aufnahme läuft...")
 
     def _stop(self) -> None:
-        if not self._recording:
-            return
-        self._recording = False
+        with self._lock:
+            if not self._recording:
+                return
+            self._recording = False
         self._tray.set_state("processing", "Wird verarbeitet...")
         threading.Thread(target=self._process, daemon=True).start()
 
@@ -95,15 +99,24 @@ class BlitztextApp:
                 pass
 
     def _open_settings(self) -> None:
+        if self._settings_open:
+            return
+        self._settings_open = True
+        old_model = self._config.get("whisper_model", "tiny")
+
         def on_save(new_config: dict) -> None:
             self._config = new_config
             api_key = cfg.get_api_key()
             self._llm = LLMService(api_key) if api_key else None
             self._setup_hotkeys()
+            if new_config.get("whisper_model") != old_model:
+                threading.Thread(target=self._load_model, daemon=True).start()
 
-        threading.Thread(
-            target=lambda: self._settings_win.open(self._config, on_save),
-            daemon=True).start()
+        def open_and_reset():
+            self._settings_win.open(self._config, on_save)
+            self._settings_open = False
+
+        threading.Thread(target=open_and_reset, daemon=True).start()
 
     def _quit(self) -> None:
         self._hotkey.unregister_all()
