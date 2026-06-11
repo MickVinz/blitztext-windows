@@ -60,3 +60,9 @@ class SettingsWindow:
         tk.Button(root, text="Speichern", command=save, width=14).grid(
             row=6, column=0, columnspan=2, pady=12)
         root.mainloop()
+
+
+if __name__ == "__main__":
+    # Standalone-Prozess: vom Tray per subprocess gestartet, damit tkinter
+    # im eigenen Hauptthread läuft (nicht thread-safe in pystray-Daemon-Thread).
+    SettingsWindow().open(cfg.load(), lambda c: None)

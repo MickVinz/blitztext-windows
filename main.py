@@ -1,4 +1,6 @@
 import os
+import subprocess
+import sys
 import threading
 
 import config as cfg
@@ -8,7 +10,6 @@ from services.llm import LLMService
 from services.hotkey import HotkeyService
 from services.paste import PasteService
 from ui.tray import TrayApp
-from ui.settings import SettingsWindow
 
 
 class BlitztextApp:
@@ -19,7 +20,7 @@ class BlitztextApp:
         self._llm: LLMService | None = None
         self._hotkey = HotkeyService()
         self._paste = PasteService()
-        self._settings_win = SettingsWindow()
+        self._root_dir = os.path.dirname(os.path.abspath(__file__))
         self._tray = TrayApp(on_settings=self._open_settings, on_quit=self._quit)
         self._recording = False
         self._improve_mode = False
@@ -104,19 +105,23 @@ class BlitztextApp:
         self._settings_open = True
         old_model = self._config.get("whisper_model", "tiny")
 
-        def on_save(new_config: dict) -> None:
-            self._config = new_config
-            api_key = cfg.get_api_key()
-            self._llm = LLMService(api_key) if api_key else None
-            self._setup_hotkeys()
-            if new_config.get("whisper_model") != old_model:
-                threading.Thread(target=self._load_model, daemon=True).start()
+        def run_settings():
+            try:
+                subprocess.run(
+                    [sys.executable, "-m", "ui.settings"],
+                    cwd=self._root_dir,
+                )
+                # Fenster geschlossen → Config neu laden und anwenden.
+                self._config = cfg.load()
+                api_key = cfg.get_api_key()
+                self._llm = LLMService(api_key) if api_key else None
+                self._setup_hotkeys()
+                if self._config.get("whisper_model") != old_model:
+                    self._load_model()
+            finally:
+                self._settings_open = False
 
-        def open_and_reset():
-            self._settings_win.open(self._config, on_save)
-            self._settings_open = False
-
-        threading.Thread(target=open_and_reset, daemon=True).start()
+        threading.Thread(target=run_settings, daemon=True).start()
 
     def _quit(self) -> None:
         self._hotkey.unregister_all()
