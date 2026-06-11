@@ -59,6 +59,18 @@ class BlitztextApp:
         with self._overlay_lock:
             self._hide_overlay_locked()
 
+    def _flash_overlay(self, mode: str) -> None:
+        # Kurze, selbst-schliessende Meldung (z.B. "Nichts erkannt"). Wird
+        # NICHT getrackt/terminiert — der Overlay-Prozess beendet sich selbst.
+        try:
+            subprocess.Popen(
+                [sys.executable, "-m", "ui.overlay", mode],
+                cwd=self._root_dir,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+        except Exception:
+            pass
+
     def _hide_overlay_locked(self) -> None:
         if self._overlay_proc and self._overlay_proc.poll() is None:
             try:
@@ -116,17 +128,24 @@ class BlitztextApp:
             self._tray.set_state("ready", "Bereit")
             return
         self._show_overlay("processing")
+        empty = False
         try:
             text = self._transcription.transcribe(wav_path, self._config["language"])
             if text:
                 if self._improve_mode and self._llm:
                     text = self._llm.improve_text(text)
                 self._paste.paste(text)
+            else:
+                empty = True
             self._tray.set_state("ready", "Bereit")
         except Exception as e:
             self._tray.set_state("error", str(e)[:40])
         finally:
             self._hide_overlay()
+            if empty:
+                # Rueckmeldung, dass nichts verstanden wurde (sonst passiert
+                # sichtbar gar nichts und es wirkt wie ein Defekt).
+                self._flash_overlay("empty")
             try:
                 os.unlink(wav_path)
             except OSError:

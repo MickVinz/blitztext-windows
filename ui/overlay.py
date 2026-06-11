@@ -3,19 +3,21 @@ import tkinter as tk
 
 # Standalone-Overlay: vom Tray per subprocess gestartet, damit tkinter im
 # eigenen Hauptthread laeuft. Zeigt ein randloses, immer-im-Vordergrund
-# Banner, das anzeigt dass eine Aufnahme laeuft. Wird beendet, indem der
-# Elternprozess den Prozess terminiert (kein eigener Timer noetig).
+# Banner. "recording"/"processing" laufen bis der Elternprozess sie
+# terminiert; Flash-Modi (z.B. "empty") schliessen sich selbst nach kurzer
+# Zeit.
 
-_COLORS = {
-    "recording": ("#F44336", "● Aufnahme läuft"),
-    "processing": ("#FFC107", "● Wird verarbeitet…"),
+# mode -> (hintergrundfarbe, text, auto_close_ms | None)
+_MODES = {
+    "recording":  ("#F44336", "● Aufnahme läuft",   None),
+    "processing": ("#FFC107", "● Wird verarbeitet…", None),
+    "empty":      ("#9E9E9E", "● Nichts erkannt",   1600),
 }
 
 
 def main() -> None:
     mode = sys.argv[1] if len(sys.argv) > 1 else "recording"
-    bg, default_text = _COLORS.get(mode, _COLORS["recording"])
-    text = sys.argv[2] if len(sys.argv) > 2 else default_text
+    bg, text, auto_close = _MODES.get(mode, _MODES["recording"])
 
     root = tk.Tk()
     root.overrideredirect(True)          # randlos
@@ -34,6 +36,9 @@ def main() -> None:
     sw = root.winfo_screenwidth()
     x = (sw - w) // 2
     root.geometry(f"+{x}+48")            # oben mittig
+
+    if auto_close:
+        root.after(auto_close, root.destroy)
 
     root.mainloop()
 

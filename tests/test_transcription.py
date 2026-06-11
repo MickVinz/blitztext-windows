@@ -31,7 +31,7 @@ def test_transcribe_auto_passes_none(tmp_path):
         svc = m.TranscriptionService.__new__(m.TranscriptionService)
         svc._model = mock_model
         svc.transcribe(wav, language="auto")
-    mock_model.transcribe.assert_called_once_with(wav, language=None)
+    mock_model.transcribe.assert_called_once_with(wav, language=None, beam_size=1)
 
 
 def test_transcribe_empty_returns_empty(tmp_path):
