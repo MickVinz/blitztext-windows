@@ -134,6 +134,9 @@ class BlitztextApp:
             if text:
                 if self._improve_mode and self._llm:
                     text = self._llm.improve_text(text)
+                # Banner schliessen BEVOR eingefuegt wird, damit der Fokus
+                # zurueck zum Zielfenster geht und Strg+V dort ankommt.
+                self._hide_overlay()
                 self._paste.paste(text)
             else:
                 empty = True
