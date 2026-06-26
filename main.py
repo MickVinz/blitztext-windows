@@ -1,4 +1,5 @@
 import os
+import socket
 import subprocess
 import sys
 import threading
@@ -188,5 +189,26 @@ class BlitztextApp:
         self._tray.run()
 
 
+_LOCK_PORT = 49219
+
+
+def _acquire_single_instance():
+    # Verhindert mehrere gleichzeitige Blitztext-Instanzen (Autostart +
+    # manueller Start). Mehrere Instanzen wuerden sich um die globalen
+    # Hotkeys und das Mikrofon streiten -> nichts funktioniert. Ein
+    # belegter lokaler Port = es laeuft bereits eine Instanz.
+    lock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        lock.bind(("127.0.0.1", _LOCK_PORT))
+        lock.listen(1)
+        return lock
+    except OSError:
+        return None
+
+
 if __name__ == "__main__":
+    _instance_lock = _acquire_single_instance()
+    if _instance_lock is None:
+        # Laeuft bereits -> still beenden.
+        sys.exit(0)
     BlitztextApp().run()
