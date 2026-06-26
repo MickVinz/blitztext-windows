@@ -11,6 +11,7 @@ from services.transcription import TranscriptionService
 from services.llm import LLMService
 from services.hotkey import HotkeyService
 from services.paste import PasteService
+from services.audio_mute import SystemMute
 from ui.tray import TrayApp
 
 _LOG = logging.getLogger("blitztext")
@@ -24,6 +25,7 @@ class BlitztextApp:
         self._llm: LLMService | None = None
         self._hotkey = HotkeyService()
         self._paste = PasteService()
+        self._sysmute = SystemMute()
         self._root_dir = os.path.dirname(os.path.abspath(__file__))
         self._tray = TrayApp(on_settings=self._open_settings, on_quit=self._quit)
         self._recording = False
@@ -121,6 +123,7 @@ class BlitztextApp:
             self._improve_mode = improve
         _LOG.info("hotkey -> recording start (improve=%s)", improve)
         self._audio.start_recording()
+        self._sysmute.mute()  # Hintergrund-Ton stummschalten waehrend Aufnahme
         self._tray.set_state("recording", "Aufnahme läuft...")
         self._show_overlay("recording")
 
@@ -141,6 +144,7 @@ class BlitztextApp:
 
     def _process(self) -> None:
         wav_path = self._audio.stop_recording()
+        self._sysmute.unmute()  # Ton sofort wieder freigeben, wenn Aufnahme endet
         if not wav_path:
             _LOG.warning("no audio captured (empty recording)")
             self._hide_overlay()
@@ -204,6 +208,7 @@ class BlitztextApp:
 
     def _quit(self) -> None:
         self._hotkey.unregister_all()
+        self._sysmute.unmute()  # Sicherheit: Ton nie stumm zuruecklassen
         self._hide_overlay()
 
     def run(self) -> None:

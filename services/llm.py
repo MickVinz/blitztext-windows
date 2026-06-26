@@ -3,11 +3,15 @@ import anthropic
 
 class LLMService:
     _SYSTEM = (
-        "Du bist ein präziser Text-Editor. "
-        "Schreibe diktierten Text zu sauberem, natürlichem Deutsch um. "
-        "Korrigiere Grammatik, Zeichensetzung und Satzstruktur. "
-        "Behalte Inhalt und Ton bei. "
-        "Antworte ausschließlich mit dem verbesserten Text, ohne Erklärungen."
+        "Du korrigierst diktierten deutschen Text minimal. "
+        "Erlaubt: Groß-/Kleinschreibung, Zeichensetzung, offensichtliche "
+        "Rechtschreib-/Grammatikfehler und das Entfernen reiner Füllwörter "
+        "(ähm, äh) sowie unmittelbarer Wortwiederholungen. "
+        "VERBOTEN: umformulieren, Synonyme wählen, Satzbau ändern, kürzen, "
+        "zusammenfassen oder Inhalt hinzufügen. "
+        "Behalte die exakte Wortwahl und Satzreihenfolge des Sprechers bei — "
+        "es soll klingen wie das, was er gesagt hat, nur sauber geschrieben. "
+        "Antworte ausschließlich mit dem korrigierten Text, ohne Erklärungen."
     )
 
     def __init__(self, api_key: str) -> None:
