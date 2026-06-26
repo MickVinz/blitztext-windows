@@ -9,9 +9,10 @@ import tkinter as tk
 
 # mode -> (hintergrundfarbe, text, auto_close_ms | None)
 _MODES = {
-    "recording":  ("#F44336", "● Aufnahme läuft",   None),
-    "processing": ("#FFC107", "● Wird verarbeitet…", None),
-    "empty":      ("#9E9E9E", "● Nichts erkannt",   1600),
+    "recording":  ("#F44336", "● Aufnahme läuft",     None),
+    "processing": ("#FFC107", "● Wird verarbeitet…",   None),
+    "empty":      ("#9E9E9E", "● Nichts erkannt",     1600),
+    "notready":   ("#FFC107", "● Modell lädt noch…",  1800),
 }
 
 

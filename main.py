@@ -1,3 +1,4 @@
+import logging
 import os
 import socket
 import subprocess
@@ -11,6 +12,8 @@ from services.llm import LLMService
 from services.hotkey import HotkeyService
 from services.paste import PasteService
 from ui.tray import TrayApp
+
+_LOG = logging.getLogger("blitztext")
 
 
 class BlitztextApp:
@@ -32,14 +35,17 @@ class BlitztextApp:
 
     def _load_model(self) -> None:
         self._tray.set_state("processing", "Modell wird geladen...")
+        _LOG.info("loading whisper model: %s", self._config["whisper_model"])
         try:
             self._transcription = TranscriptionService(self._config["whisper_model"])
             api_key = cfg.get_api_key()
             if api_key:
                 self._llm = LLMService(api_key)
             self._tray.set_state("ready", "Bereit")
+            _LOG.info("model loaded, ready (llm=%s)", "yes" if self._llm else "no")
         except Exception as e:
             self._tray.set_state("error", f"Fehler: {str(e)[:40]}")
+            _LOG.exception("model load FAILED: %s", e)
 
     def _show_overlay(self, mode: str) -> None:
         # Startet das Aufnahme-/Verarbeitungs-Banner als eigenen Prozess
@@ -83,6 +89,10 @@ class BlitztextApp:
     def _setup_hotkeys(self) -> None:
         self._hotkey.unregister_all()
         mode = self._config["recording_mode"]
+        _LOG.info(
+            "hotkeys registered: mode=%s transcribe=%s improve=%s",
+            mode, self._config["hotkey_transcribe"], self._config["hotkey_improve"],
+        )
         if mode == "push_to_talk":
             self._hotkey.setup_ptt(
                 self._config["hotkey_transcribe"],
@@ -100,10 +110,16 @@ class BlitztextApp:
 
     def _start(self, improve: bool) -> None:
         with self._lock:
-            if self._recording or self._transcription is None:
+            if self._recording:
+                _LOG.info("hotkey ignored: already recording")
+                return
+            if self._transcription is None:
+                _LOG.warning("hotkey pressed but model not ready -> ignored")
+                self._flash_overlay("notready")
                 return
             self._recording = True
             self._improve_mode = improve
+        _LOG.info("hotkey -> recording start (improve=%s)", improve)
         self._audio.start_recording()
         self._tray.set_state("recording", "Aufnahme läuft...")
         self._show_overlay("recording")
@@ -113,6 +129,7 @@ class BlitztextApp:
             if not self._recording:
                 return
             self._recording = False
+        _LOG.info("hotkey -> recording stop, processing")
         self._tray.set_state("processing", "Wird verarbeitet...")
         threading.Thread(target=self._process, daemon=True).start()
 
@@ -125,6 +142,7 @@ class BlitztextApp:
     def _process(self) -> None:
         wav_path = self._audio.stop_recording()
         if not wav_path:
+            _LOG.warning("no audio captured (empty recording)")
             self._hide_overlay()
             self._tray.set_state("ready", "Bereit")
             return
@@ -132,18 +150,23 @@ class BlitztextApp:
         empty = False
         try:
             text = self._transcription.transcribe(wav_path, self._config["language"])
+            _LOG.info("transcribed %d chars", len(text))
             if text:
                 if self._improve_mode and self._llm:
                     text = self._llm.improve_text(text)
+                    _LOG.info("improved via llm -> %d chars", len(text))
                 # Banner schliessen BEVOR eingefuegt wird, damit der Fokus
                 # zurueck zum Zielfenster geht und Strg+V dort ankommt.
                 self._hide_overlay()
                 self._paste.paste(text)
+                _LOG.info("pasted into active window")
             else:
                 empty = True
+                _LOG.info("transcript empty -> 'Nichts erkannt'")
             self._tray.set_state("ready", "Bereit")
         except Exception as e:
             self._tray.set_state("error", str(e)[:40])
+            _LOG.exception("processing failed: %s", e)
         finally:
             self._hide_overlay()
             if empty:
@@ -206,9 +229,21 @@ def _acquire_single_instance():
         return None
 
 
+def _setup_logging() -> None:
+    log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "blitztext.log")
+    logging.basicConfig(
+        filename=log_path,
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+
+
 if __name__ == "__main__":
+    _setup_logging()
     _instance_lock = _acquire_single_instance()
     if _instance_lock is None:
-        # Laeuft bereits -> still beenden.
+        _LOG.info("another instance already running -> exit (pid=%d)", os.getpid())
         sys.exit(0)
+    _LOG.info("=== Blitztext start (pid=%d) ===", os.getpid())
     BlitztextApp().run()
